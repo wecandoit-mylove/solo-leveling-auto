@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>自动签到器</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+    <script>
+    // 从URL获取Cookie参数
+    function getCookieFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('cookie') || document.cookie;
+    }
+    
+    async function autoSignIn() {
+        const cookie = getCookieFromURL();
+        const resultElement = document.getElementById('result');
+        
+        if (!cookie) {
+            resultElement.className = 'error';
+            resultElement.innerHTML = '<h3>❌ 错误</h3><p>未提供Cookie</p>';
+            return;
+        }
+        
+        resultElement.className = 'info';
+        resultElement.innerHTML = '<h3>⏳ 执行中...</h3><p>正在调用签到API</p>';
+        
+        try {
+            const response = await fetch('https://slvshop.netmarble.com/api/shop/daily-reward?localeCode=EN_US', {
+                headers: {
+                    'Cookie': cookie,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            // 显示结果
+            if (result.errorCode === 0) {
+                resultElement.className = 'success';
+                resultElement.innerHTML = `
+                    <h3>✅ 签到成功</h3>
+                    <p>奖励: ${result.resultData?.itemName || '未知'}</p>
+                    <p>时间: ${result.resultData?.attendDate || new Date().toLocaleDateString()}</p>
+                `;
+            } else if (result.errorCode === 730000) {
+                resultElement.className = 'info';
+                resultElement.innerHTML = `
+                    <h3>📅 今日已领取</h3>
+                    <p>${result.errorMessage}</p>
+                `;
+            } else {
+                resultElement.className = 'error';
+                resultElement.innerHTML = `
+                    <h3>❌ 签到失败</h3>
+                    <p>错误: ${result.errorMessage || result.errorCode}</p>
+                `;
+            }
+            
+            // 返回结果给Worker
+            window.parent.postMessage({
+                type: 'SIGNIN_RESULT',
+                data: result
+            }, '*');
+            
+        } catch (error) {
+            resultElement.className = 'error';
+            resultElement.innerHTML = `
+                <h3>❌ 请求失败</h3>
+                <p>${error.message}</p>
+            `;
+            
+            window.parent.postMessage({
+                type: 'SIGNIN_ERROR',
+                error: error.message
+            }, '*');
+        }
+    }
+    
+    // 页面加载时自动执行
+    window.onload = autoSignIn;
+    </script>
+</head>
+<body>
+    <h1>🎮 我独自升级自动签到</h1>
+    <div id="result">初始化...</div>
+    <div style="margin-top: 20px; font-size: 12px; color: #666;">
+        <p>此页面通过浏览器环境调用API，绕过服务器检测。</p>
+        <p>Cookie通过URL参数安全传递，不会永久存储。</p>
+    </div>
+</body>
+</html>
